@@ -8,14 +8,14 @@
 #define EXECCMD 5
 
 // Tokens
-enum { ARG, EOF };
+enum { ARG, EOF, EXIT };
 
 // Command structs - inspired by sh.c
 
 // Global vars
 char inputBuf[MAXTOKEN*10];
 static char argvbuf[MAXTOKEN*10];
-static char *argvPt[MAXTOKEN/10];
+static char *argvPt[MAXTOKEN];
 
 int bufIdx = 0;
 int argvIdx = 0;
@@ -26,17 +26,16 @@ int commandType;
 char token[MAXTOKEN];
 
 // Execute a command (child)
-//void executecmd(){
- // printf("Execute!");
-  //struct execcmd *execCmd;
- //switch(cmd->type){
-    //case EXECCMD:
-      //execCmd = (struct execcmd *)cmd;
-      //printf("executing with argv: %s\n", execCmd->argv);
-      //exec(execCmd->argv[0], execCmd->argv); 
-      //break;
-  //}
-//}
+void executecmd(){
+  switch(commandType){
+    case EXECCMD:
+      exec(argvPt[0], argvPt); 
+      fprintf(2, "nsh: Exec %s failed\n", argvPt[0]);
+      break;
+    default:
+      fprintf(2, "nsh: Exec failed\n");
+  }
+}
 
 // Lexer - inspired by K&R section 5.12
 int isalphanum(char c){
@@ -50,11 +49,16 @@ void getToken(){
   char *p = token;
   char cur = inputBuf[bufIdx];
 
+  if(bufIdx == sizeof(inputBuf)-1){
+    fprintf(2,"nsh: Token too long\n"); 
+  }
+
   while(cur == ' ' || cur == '\t'){
     cur = inputBuf[++bufIdx];
   }
 
-  if(isalphanum(cur)){
+  if(isalphanum(cur) || cur == '.'){
+   // fprintf(2, "isalphanum. Cur: %d \n  %c", cur, cur);
     for(*p++ = cur; isalphanum(cur = inputBuf[++bufIdx]); ){
       *p++ = cur;
     }
@@ -63,6 +67,11 @@ void getToken(){
   }
   else if(cur == '\n'){
     tokentype = EOF;
+  }
+  // Error case
+  else{
+    fprintf(2, "nsh: Invalid syntax\n");
+    exit(1);
   }
 }
 
@@ -85,18 +94,19 @@ void parseCmd(){
       parseExec();
       break;
     case EOF:
-      parseExec();
       break;
   }
+  fprintf(2, "return");
 }
 
 void parseExec(){
+  //fprintf(2, "Current token type : %d\n", tokentype);
+  //fprintf(2, "Current token value : %s\n", token);
   switch(tokentype){
     case ARG:
       strcpy(argvCur, token);
-      argvPt[argvIdx] = argvCur;
+      argvPt[argvIdx++] = argvCur;
       argvCur+=strlen(token) + 1;
-      argvIdx++;
       getToken();
       parseExec();
       break;
@@ -119,20 +129,22 @@ int main(int argc, char **argv){
   printf("@ ");
   // Execute command
   while(gets(inputBuf, sizeof(inputBuf))){
+    if(!inputBuf[0]){
+        break;
+    }
+    // Reset argv Buffer
     memset(argvbuf, 0, sizeof(argvbuf));
     // cd ?
     // Child executes command
     if(!fork()){
       parseCmd();
-      switch(commandType){
-        case EXECCMD:
-          exec(argvPt[0], argvPt); 
-          printf("Exec fail\n");
-          break;
-      }
+      executecmd();
+      exit(0);
     }
     wait(0);
     printf("@ ");
+    // Reset input buffer
+    memset(inputBuf, 0, sizeof(inputBuf));
   }
   exit(0);
 }
