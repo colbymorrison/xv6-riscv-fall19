@@ -13,9 +13,13 @@ enum { ARG, EOF };
 // Command structs - inspired by sh.c
 
 // Global vars
-char inputBuf[512];
-int argIdx = 0;
+char inputBuf[MAXTOKEN*10];
+static char argvbuf[MAXTOKEN*10];
+static char *argvPt[MAXTOKEN/10];
+
 int bufIdx = 0;
+int argvIdx = 0;
+char *argvCur = argvbuf;
 
 int tokentype;
 int commandType;
@@ -65,42 +69,38 @@ void getToken(){
 // Recursive-descent parsing
 void parseExec();
 
-void printargv(char **argv){
-  for(int i = 0; i < 20; i++){
-    printf("argv[%d] = %s ", i, argv[i]);
-    if(i == 19){
+void printargv(){
+  for(int i = 0; i < sizeof(argvbuf); i++){
+    printf("argvbuf[%d] = %d ", i, argvbuf[i]);
+    if(i == sizeof(argvbuf)-1){
       printf("\n");
     }
   }
 }
 
-void parseCmd(char **argv){
+void parseCmd(){
   getToken();
   switch(tokentype){
     case ARG:
-      parseExec(argv);
+      parseExec();
       break;
     case EOF:
-      parseExec(argv);
+      parseExec();
       break;
   }
 }
 
-void parseExec(char **argv){
-  printf("Current token type : %d\n", tokentype);
-  printf("Current token value : %s\n", token);
+void parseExec(){
   switch(tokentype){
     case ARG:
-      printf("Setting argv[%d] to %s\n", argIdx, token);
-      argv[argIdx] =  malloc(strlen(token));
-      memmove(argv[argIdx], token, strlen(token));
-      printargv(argv);
-      argIdx++;
+      strcpy(argvCur, token);
+      argvPt[argvIdx] = argvCur;
+      argvCur+=strlen(token) + 1;
+      argvIdx++;
       getToken();
-      parseExec(argv);
+      parseExec();
       break;
     case EOF:
-      printargv(argv);
       commandType = EXECCMD;
       break;
   }
@@ -118,22 +118,19 @@ int main(int argc, char **argv){
 
   printf("@ ");
   // Execute command
-      char *argvExec[20];
   while(gets(inputBuf, sizeof(inputBuf))){
+    memset(argvbuf, 0, sizeof(argvbuf));
     // cd ?
-    printf("Got input buf: %s", inputBuf); 
     // Child executes command
     if(!fork()){
-      parseCmd(argvExec);
-      printf("Execute! Type %d\n", commandType);
+      parseCmd();
       switch(commandType){
         case EXECCMD:
-          printargv(argvExec);
-          exec(argvExec[0], argvExec); 
+          exec(argvPt[0], argvPt); 
+          printf("Exec fail\n");
           break;
       }
     }
-    memset(argvExec, 0, sizeof(argvExec));   
     wait(0);
     printf("@ ");
   }
