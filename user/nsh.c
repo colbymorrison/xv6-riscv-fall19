@@ -11,19 +11,25 @@
 enum { ARG, EOF, EXIT };
 
 // Command structs - inspired by sh.c
+struct cmd{
+  int type;
+}
+
+struct execcmd{
+  struct cmd *cmd;
+  char *argv[MAXTOKEN];
+};
 
 // Global vars
 char inputBuf[MAXTOKEN*10];
 static char argvbuf[MAXTOKEN*10];
-static char *argvPt[MAXTOKEN];
 
 int bufIdx = 0;
 int argvIdx = 0;
 char *argvCur = argvbuf;
 
-int tokentype;
+//int tokentype;
 int commandType;
-char token[MAXTOKEN];
 
 // Execute a command (child)
 void executecmd(){
@@ -44,9 +50,8 @@ int isalphanum(char c){
 }
 
 
-void getToken(){
+void getToken(char *token, int *tokenType){
   memset(token, 0, sizeof(token));  
-  char *p = token;
   char cur = inputBuf[bufIdx];
 
   if(bufIdx == sizeof(inputBuf)-1){
@@ -58,15 +63,14 @@ void getToken(){
   }
 
   if(isalphanum(cur) || cur == '.'){
-   // fprintf(2, "isalphanum. Cur: %d \n  %c", cur, cur);
-    for(*p++ = cur; isalphanum(cur = inputBuf[++bufIdx]); ){
-      *p++ = cur;
+    for(*token++ = cur; isalphanum(cur = inputBuf[++bufIdx]); ){
+      *token++ = cur;
     }
-    *p = '\0';
-    tokentype = ARG;
+    *token = '\0';
+    *tokenType = ARG;
   }
   else if(cur == '\n'){
-    tokentype = EOF;
+    *tokenType = EOF;
   }
   // Error case
   else{
@@ -88,27 +92,28 @@ void printargv(){
 }
 
 void parseCmd(){
-  getToken();
+  char token[MAXTOKEN];
+  int tokentype;
+  getToken(token, &tokentype);
   switch(tokentype){
     case ARG:
-      parseExec();
+      parseExec(token, tokentype);
       break;
     case EOF:
       break;
   }
-  fprintf(2, "return");
 }
 
-void parseExec(){
-  //fprintf(2, "Current token type : %d\n", tokentype);
+void parseExec(char *token, int tokenType){
+  //fprintf(2, "Current token type : %d\n", tokenType);
   //fprintf(2, "Current token value : %s\n", token);
-  switch(tokentype){
+  switch(tokenType){
     case ARG:
       strcpy(argvCur, token);
       argvPt[argvIdx++] = argvCur;
       argvCur+=strlen(token) + 1;
-      getToken();
-      parseExec();
+      getToken(token, &tokenType);
+      parseExec(token, tokenType);
       break;
     case EOF:
       commandType = EXECCMD;
