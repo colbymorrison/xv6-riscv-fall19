@@ -141,7 +141,8 @@ one(char *cmd, char *expect, int tight)
   char out[256];
   readfile(outfile, out, sizeof(out));
   unlink(outfile);
-
+ 
+  fprintf(2, "expect %s\n out %s\n", expect, out); 
   if(strstr(out, expect) != 0){
     if(tight && strlen(out) > strlen(expect) + 10){
       fprintf(2, "testsh: saw expected output, but too much else as well\n");
