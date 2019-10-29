@@ -3,40 +3,43 @@
 #include "kernel/fcntl.h"
 
 #define MAXTOKEN 50 
+#define MAXCOMMANDS 20
 #define NULL 0
 
-enum commandTypes {EXECMD, REDRCMD, PIPECMD};
+enum commandTypes {EXECCMD, REDRCMD, PIPECMD};
 
 enum tokenTypes { ARG=3, EOF, REDR, EXIT };
 
 // Command structs - inspired by sh.c
-struct command{
-  int type;
-  struct command *nextCmd;
-};
-
 struct execcmd{
-  int type;
-  struct command *nextCmd;
   char *argv[MAXTOKEN];
 };
 
 struct redrcmd{
-  int type;
-  struct command *nextCmd;
   char file[MAXTOKEN];
   int lr;
 };
 
+struct command{
+  int type;
+  union{
+    struct execcmd execCmd;
+    struct redrcmd redrCmd;
+  } cmd;
+};
+
 // Global vars
 char inputBuf[MAXTOKEN*10];
+char argvBuf[MAXTOKEN*10];
+struct command commands[MAXCOMMANDS];
 int bufIdx = 0;
-int argvIdx = 0;
+int cmdIdx = 0;
+int argvIdx = 0; // Index into current execCmd struct argv (not global argvbuf)
 
 // Lexer - inspired by K&R section 5.12
 int isalphanum(char c){
   int ascii = (int) c;
-  return (ascii >= 48 && ascii <= 57) || (ascii >= 65 && ascii <= 90) || (ascii >= 97 && ascii <= 122);
+  return (ascii >= 48 && ascii <= 57) || (ascii >= 65 && ascii <= 90) || (ascii >= 97 && ascii <= 122) || ascii == 46;
 }
 
 
@@ -52,7 +55,7 @@ int getToken(char *token){
     cur = inputBuf[++bufIdx];
   }
 
-  if(isalphanum(cur) || cur == '.'){
+  if(isalphanum(cur)){
     for(*token++ = cur; isalphanum(cur = inputBuf[++bufIdx]); ){
       *token++ = cur;
     }
@@ -75,8 +78,8 @@ int getToken(char *token){
 }
 
 // Recursive-descent parsing
-void parseExec(struct execcmd *execCmd, char *argvCur, struct command *cmdList, char *token, int tokenType);
-void parseRedr(struct redrcmd *redrCmd, struct command *cmdList, char *token, int tokenType);
+void parseExec(struct execcmd *execCmd, char *argvCur, char *token, int tokenType);
+void parseRedr(char *token, int tokenType);
 
 void printargv(char **argvbuf){
   for(int i = 0; i < sizeof(argvbuf); i++){
@@ -87,42 +90,19 @@ void printargv(char **argvbuf){
   }
 }
 
-int sizeofCmd(struct command *cmd){
-  switch(cmd->type){
-    case(EXECMD):
-      return sizeof(struct execcmd);
-    case(REDRCMD):
-      return sizeof(struct redrcmd);
-    default:
-      return 0;
-  }
-}
-
-void insertCmdList(struct command *cmdList, struct command *currentCmd){
-  int sizeList = sizeofCmd(cmdList);
-  int sizeCur = sizeofCmd(currentCmd);
-
-  printf("sizeList: %d\n sizeCur: %d\n", sizeList, sizeCur);
-  printf("Prev cmd type: %d Inserting command type: %d\n", cmdList->type, currentCmd->type);
-
-  // Not first elt in list
-  if(sizeList){
-    cmdList->nextCmd = cmdList + sizeList;
-    cmdList += sizeList;
-  }
-
-  memmove(cmdList, currentCmd, sizeCur);
-  printf("Memmoe\n");
+void insertCmd(struct command *cmd){
+  struct command* commandsCur = &commands[cmdIdx++];
+  memmove(commandsCur, cmd, sizeof(struct command));
 }
 
 
-int parseCmd(struct command *cmdList, char *argvCur){
-  struct execcmd execCmd = {EXECMD, NULL};
+void parseCmd(char *argvCur){
+  struct execcmd execCmd;
   char token[MAXTOKEN];
   int tokentype = getToken(token);
   switch(tokentype){
     case ARG:
-        parseExec(&execCmd, argvCur, cmdList, token, tokentype);
+        parseExec(&execCmd, argvCur, token, tokentype);
         break;
     case EOF:
         break;
@@ -132,26 +112,28 @@ int parseCmd(struct command *cmdList, char *argvCur){
   }
 }
 
-void parseExec(struct execcmd *execCmd, char *argvCur, struct command *cmdList, char *token, int tokenType){
+void parseExec(struct execcmd *execCmd, char *argvCur, char *token, int tokenType){
   fprintf(2, "Current token type : %d\n", tokenType);
   fprintf(2, "Current token value : %s\n", token);
-  struct redrcmd redrCmd;
+  struct command cmd;
 
   switch(tokenType){
     case ARG:
       strcpy(argvCur, token);
       execCmd->argv[argvIdx++] = argvCur;
       argvCur+=strlen(token) + 1;
-      parseExec(execCmd, argvCur, cmdList, token, getToken(token));
+      parseExec(execCmd, argvCur, token, getToken(token));
       break;
     case REDR:
-      insertCmdList(cmdList, (struct command *)execCmd);
-
-      redrCmd = (struct redrcmd){REDRCMD, NULL};
-      parseRedr(&redrCmd, cmdList, token, tokenType);
+      cmd.type = EXECCMD;
+      cmd.cmd.execCmd = *execCmd;
+      insertCmd(&cmd);
+      parseRedr(token, tokenType);
       break;
     case EOF:
-      insertCmdList(cmdList, (struct command *)execCmd);
+      cmd.type = EXECCMD;
+      cmd.cmd.execCmd = *execCmd;
+      insertCmd(&cmd);
       break;
     default:
       fprintf(2, "nsh: Invalid syntax\n");
@@ -159,51 +141,62 @@ void parseExec(struct execcmd *execCmd, char *argvCur, struct command *cmdList, 
   }
 }
 
-void parseRedr(struct redrcmd *redrCmd, struct command *cmdList, char *token, int tokenType){
-  if(*token == '>'){
-    redrCmd -> lr = 1;
+void parseRedr(char *token, int tokenType){
+  struct redrcmd redrCmd;
+  struct command cmd;
+  switch(tokenType){
+    case REDR:
+      fprintf(2, "Current token type : %d\n", tokenType);
+      fprintf(2, "Current token value : %s\n", token);
+      if(*token == '>'){
+        redrCmd.lr = 1;
+      }
+      else{
+        redrCmd.lr = 0;
+      }
+      if((tokenType = getToken(token)) != ARG){
+        fprintf(2, "nsh: Invalid redirect syntax\n");
+        exit(1);
+      }
+      fprintf(2, "Current token type1 : %d\n", tokenType);
+      fprintf(2, "Current token value : %s\n", token);
+      strcpy(redrCmd.file, token);
+      cmd.type = REDRCMD;
+      cmd.cmd.redrCmd = redrCmd;
+      insertCmd(&cmd);
+      parseRedr(token, getToken(token));
+    case EOF:
+      break;
   }
-  else{
-    redrCmd -> lr = 0;
-  }
-  if((tokenType = getToken(token)) != ARG){
-    fprintf(2, "nsh: Invalid redirect syntax\n");
-    exit(1);
-  }
-  fprintf(2, "Current token type : %d\n", tokenType);
-  fprintf(2, "Current token value : %s\n", token);
-  strcpy(redrCmd->file, token);
-  redrCmd -> type = REDRCMD;
-  insertCmdList(cmdList, (struct command *)redrCmd);
+
 }
 
 
 // Execute a command (child), inspired by sh.c
-void execute(struct command *cmdList){
-  struct command *cmd = cmdList;
-  struct execcmd *execCmd;
-  struct redrcmd *redrCmd;
+void execute(){
+  struct execcmd execCmd;
+  struct redrcmd redrCmd;
 
-  printf("Exec\n");
-  while(cmd){
-    printf("Type %d\n", cmd->type);
-    switch(cmd->type){
-      case EXECMD:
-        execCmd = (struct execcmd *)cmd;
-        printf("Execcmd: argv[0]: %s\n", execCmd->argv[0]);
-        exec(execCmd->argv[0], execCmd->argv); 
-        fprintf(2, "nsh: Exec %s failed\n", execCmd->argv[0]);
+  //printf("Exec\n");
+  for(int i = cmdIdx-1; i >= 0; i --){
+    struct command curCmd = commands[i];
+    //printf("Type %d\n", curCmd.type);
+    switch(curCmd.type){
+      case EXECCMD:
+        execCmd = curCmd.cmd.execCmd;
+        //printf("Execcmd: argv[0]: %p\n", execCmd.argv[0]);
+        exec(execCmd.argv[0], execCmd.argv); 
+        fprintf(2, "nsh: Exec %s failed\n", execCmd.argv[0]);
         break;
       case REDRCMD:
-        redrCmd = (struct redrcmd *)cmd;
-        printf("Redr command: file %s, type %d\n", redrCmd->file, redrCmd->lr);
-        close(redrCmd->lr);
-        if(open(redrCmd -> file, O_RDWR|O_CREATE) < 0){ // TODO Just write?
-          fprintf(2, "nsh: Error opening file %s", redrCmd->file);
+        redrCmd = curCmd.cmd.redrCmd;
+        //printf("Redr command: file %s, type %d\n", redrCmd.file, redrCmd.lr);
+        close(redrCmd.lr);
+        if(open(redrCmd.file, O_RDWR|O_CREATE) < 0){ // TODO Just write?
+          fprintf(2, "nsh: Error opening file %s", redrCmd.file);
           exit(1);
         }
-        cmd = redrCmd->nextCmd;
-        printf("Type %d\n", cmd->type);
+        //printf("Type %d\n", curCmd.type);
         break;
       default:
         fprintf(2, "nsh: Exec failed\n");
@@ -215,16 +208,9 @@ void execute(struct command *cmdList){
 
 // Run user-inputted command
 void runCmd(){
-  char argvbuf[30];
-  // Linked list of commands
-  struct command cmdList[100];
-  printf("List total size: %d\n", sizeof(cmdList));
-  struct command *cmdListP = cmdList;
-  // Trigger default case, 1st elt
-  cmdListP->type = -1;
-
-  parseCmd(cmdListP, argvbuf);
-  execute(cmdList);
+  char *argvCur = argvBuf;
+  parseCmd(argvCur);
+  execute();
 }
 
 int main(int argc, char **argv){
@@ -250,8 +236,9 @@ int main(int argc, char **argv){
     }
     wait(0);
     printf("@ ");
-    // Reset input buffer
+    // Reset input buffer and argvbuffer
     memset(inputBuf, 0, sizeof(inputBuf));
+    memset(argvBuf, 0, sizeof(argvBuf));
   }
   exit(0);
 }
