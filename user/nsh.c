@@ -25,6 +25,7 @@ struct command{
   union{
     struct execcmd execCmd;
     struct redrcmd redrCmd;
+    struct pipecmd pipeCmd;
   } cmd;
 };
 
@@ -198,6 +199,9 @@ void execute(){
         }
         //printf("Type %d\n", curCmd.type);
         break;
+      case PIPECMD:
+        pipeCmd = cur.cmd.pipeCmd;
+
       default:
         fprintf(2, "nsh: Exec failed\n");
         exit(1);
