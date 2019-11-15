@@ -662,7 +662,7 @@ either_copyin(void *dst, int user_src, uint64 src, uint64 len)
   }
 }
 
-// Print a process listing to console.  For debugging.
+// Print a process listing to console.
 // Runs when user types ^P on console.
 // No lock to avoid wedging a stuck machine further.
 void
