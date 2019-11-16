@@ -4,5 +4,5 @@
 
 int main(int argc, char **argv){
   ps();
-  return 0;
+  exit(0);
 }
