@@ -174,13 +174,13 @@ clockintr()
 // returns 2 if timer interrupt,
 // 1 if other device,
 // 0 if not recognized.
-int
+  int
 devintr()
 {
   uint64 scause = r_scause();
 
   if((scause & 0x8000000000000000L) &&
-     (scause & 0xff) == 9){
+      (scause & 0xff) == 9){
     // this is a supervisor external interrupt, via PLIC.
 
     // irq indicates which device interrupted.
@@ -203,10 +203,15 @@ devintr()
     // software interrupt from a machine-mode timer interrupt,
     // forwarded by timervec in kernelvec.S.
 
+    struct proc *p;
+    if((p = myproc())){
+      printf("\nIncrementing pid %d: %s, cur t %d\n",p->pid, p->name, p->time);
+      p->time++;
+    }
     if(cpuid() == 0){
       clockintr();
     }
-    
+
     // acknowledge the software interrupt by clearing
     // the SSIP bit in sip.
     w_sip(r_sip() & ~2);
@@ -217,7 +222,7 @@ devintr()
   }
 }
 
-static const char *
+  static const char *
 scause_desc(uint64 stval)
 {
   static const char *intr_desc[16] = {
