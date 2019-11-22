@@ -32,6 +32,15 @@ trapinithart(void)
   w_stvec((uint64)kernelvec);
 }
 
+void
+timerintrtrap(struct proc *p){
+   printf("Timer intr for proc %d\n", p->pid);
+   if(p->state == RUNNING && p->vruntime - p->schedvruntime >= p->quanta){
+     printf("Exceeded quota, yielding!\n");
+     yield();
+   }
+}
+
 //
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
@@ -79,9 +88,8 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2 && p->vruntime - p->schedvruntime >= p->quanta){
-    printf("Force yield from process %d\n", p->pid);
-    yield();
+  if(which_dev == 2){
+    timerintrtrap(p);
   }
 
   usertrapret();
@@ -153,16 +161,8 @@ kerneltrap()
   }
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2){
-    struct proc *p;
-    if((p = myproc())){
-        printf("p: %d\n", p->pid);
-        procdump();
-        if(p->state == RUNNING && p->vruntime - p->schedvruntime >= p->quanta){
-            printf("Kernel trap give up\n");
-            yield();
-    }
-  }
+  if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING){
+    timerintrtrap(myproc());
   }
 
   // the yield() may have caused some traps to occur,
@@ -170,6 +170,7 @@ kerneltrap()
   w_sepc(sepc);
   w_sstatus(sstatus);
 }
+
 
 void
 clockintr()
