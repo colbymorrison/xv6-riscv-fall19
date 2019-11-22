@@ -79,8 +79,9 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if(which_dev == 2 && p->schedvruntime - p->vruntime >= p->quanta){
     yield();
+  }
 
   usertrapret();
 }
@@ -205,8 +206,8 @@ devintr()
 
     struct proc *p;
     if((p = myproc())){
-      printf("\nIncrementing pid %d: %s, cur t %d\n",p->pid, p->name, p->time);
-      p->time++;
+      printf("\nIncrementing pid %d: %s, cur t %d\n",p->pid, p->name, p->vruntime);
+      p->vruntime++;
     }
     if(cpuid() == 0){
       clockintr();

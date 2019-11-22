@@ -93,7 +93,10 @@ struct proc {
   int killed;                  // If non-zero, have been killed
   int xstate;                  // Exit status to be returned to parent's wait
   int pid;                     // Process ID
-  int time;                    // How long process has been running (ticks)
+  int schedvruntime;           // What is this procs v runtime when scheduled?
+  int vruntime;                // How long process has been running (ticks)
+  int weight;                  // Weight 
+  int quanta;                  // How long running for?
 
   // these are private to the process, so p->lock need not be held.
   uint64 kstack;               // Virtual address of kernel stack

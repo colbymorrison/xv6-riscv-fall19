@@ -107,7 +107,8 @@ allocproc(void)
 
 found:
   p->pid = allocpid();
-  p->time = 0;
+  p->vruntime = 0;
+  p->weight = 1024;
 
   // Allocate a trapframe page.
   if((p->tf = (struct trapframe *)kalloc()) == 0){
@@ -447,9 +448,11 @@ scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
+  int sched_latency = 48;
   
   c->proc = 0;
   for(;;){
+    printf("Starting loop\n");
     // Avoid deadlock by giving devices a chance to interrupt.
     intr_on();
 
@@ -458,34 +461,44 @@ scheduler(void)
     // cause a lost wakeup.
     intr_off();
 
-    int found = 0;
+    int runnable = 0;
+    struct proc* runnables[NPROC];
+    int i = 0;
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->scheduler, &p->context);
-
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
-
-        found = 1;
+        runnable++;
+        runnables[i++] = proc;
       }
-
-      // ensure that release() doesn't enable interrupts.
-      // again to avoid a race between interrupt and WFI.
-      c->intena = 0;
-
-      release(&p->lock);
     }
-    if(found == 0){
-      asm volatile("wfi");
+
+    for(int i = 0; i < runnable; i++){
+      struct proc *myproc = runnables[i];
+      myproc->schedvruntime = myproc->vruntime;
+      myproc->quanta = sched_latency / runnable; 
+      myproc->state = RUNNING;
+      swtch(&c->scheduler, &myproc->context);
+
+      // Process is done running for now.
+      // It should have changed its p->state before coming back.
+      c->proc = 0;
     }
-  }
+
+    // Sorting argh
+    //int runtimemin = INT_MAX;
+    //for(int i = 0; i < runnable; i++){
+    // struct proc *thisproc = runnables[i];
+    //if(thisproc -> vruntime < runtimemin){
+    // runtimemin = thisproc -> vruntime;
+    //}
+    //}
+
+  // ensure that release() doesn't enable interrupts.
+  // again to avoid a race between interrupt and WFI.
+  c->intena = 0;
+
+  release(&p->lock);
+}
 }
 
 // Switch to scheduler.  Must hold only p->lock
@@ -495,7 +508,7 @@ scheduler(void)
 // be proc->intena and proc->noff, but that would
 // break in the few places where a lock is held but
 // there's no process.
-void
+  void
 sched(void)
 {
   int intena;
@@ -516,7 +529,7 @@ sched(void)
 }
 
 // Give up the CPU for one scheduling round.
-void
+  void
 yield(void)
 {
   struct proc *p = myproc();
@@ -528,7 +541,7 @@ yield(void)
 
 // A fork child's very first scheduling by scheduler()
 // will swtch to forkret.
-void
+  void
 forkret(void)
 {
   static int first = 1;
@@ -549,11 +562,11 @@ forkret(void)
 
 // Atomically release lock and sleep on chan.
 // Reacquires lock when awakened.
-void
+  void
 sleep(void *chan, struct spinlock *lk)
 {
   struct proc *p = myproc();
-  
+
   // Must acquire p->lock in order to
   // change p->state and then call sched.
   // Once we hold p->lock, we can be
@@ -583,7 +596,7 @@ sleep(void *chan, struct spinlock *lk)
 
 // Wake up all processes sleeping on chan.
 // Must be called without any p->lock.
-void
+  void
 wakeup(void *chan)
 {
   struct proc *p;
@@ -599,7 +612,7 @@ wakeup(void *chan)
 
 // Wake up p if it is sleeping in wait(); used by exit().
 // Caller must hold p->lock.
-static void
+  static void
 wakeup1(struct proc *p)
 {
   if(!holding(&p->lock))
@@ -612,7 +625,7 @@ wakeup1(struct proc *p)
 // Kill the process with the given pid.
 // The victim won't exit until it tries to return
 // to user space (see usertrap() in trap.c).
-int
+  int
 kill(int pid)
 {
   struct proc *p;
@@ -636,7 +649,7 @@ kill(int pid)
 // Copy to either a user address, or kernel address,
 // depending on usr_dst.
 // Returns 0 on success, -1 on error.
-int
+  int
 either_copyout(int user_dst, uint64 dst, void *src, uint64 len)
 {
   struct proc *p = myproc();
@@ -651,7 +664,7 @@ either_copyout(int user_dst, uint64 dst, void *src, uint64 len)
 // Copy from either a user address, or kernel address,
 // depending on usr_src.
 // Returns 0 on success, -1 on error.
-int
+  int
 either_copyin(void *dst, int user_src, uint64 src, uint64 len)
 {
   struct proc *p = myproc();
@@ -666,15 +679,15 @@ either_copyin(void *dst, int user_src, uint64 src, uint64 len)
 // Print a process listing to console.
 // Runs when user types ^P on console.
 // No lock to avoid wedging a stuck machine further.
-void
+  void
 procdump(void)
 {
   static char *states[] = {
-  [UNUSED]    "unused",
-  [SLEEPING]  "sleep ",
-  [RUNNABLE]  "runble",
-  [RUNNING]   "run   ",
-  [ZOMBIE]    "zombie"
+    [UNUSED]    "unused",
+    [SLEEPING]  "sleep ",
+    [RUNNABLE]  "runble",
+    [RUNNING]   "run   ",
+    [ZOMBIE]    "zombie"
   };
   struct proc *p;
   char *state;
@@ -687,7 +700,7 @@ procdump(void)
       state = states[p->state];
     else
       state = "???";
-    printf("%d %s %s %d", p->pid, state, p->name, p->time);
+    printf("%d %s %s %d", p->pid, state, p->name, p->vruntime);
     printf("\n");
   }
 }
