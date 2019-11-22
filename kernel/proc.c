@@ -284,7 +284,6 @@ fork(void)
   pid = np->pid;
 
   np->state = RUNNABLE;
-
   release(&np->lock);
 
   return pid;
@@ -448,11 +447,10 @@ scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
-  int sched_latency = 48;
+  int sched_latency = 40;
   
   c->proc = 0;
   for(;;){
-    printf("Starting loop\n");
     // Avoid deadlock by giving devices a chance to interrupt.
     intr_on();
 
@@ -468,20 +466,30 @@ scheduler(void)
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
         runnable++;
-        runnables[i++] = proc;
+        runnables[i++] = p;
       }
+      release(&p->lock);
     }
 
     for(int i = 0; i < runnable; i++){
       struct proc *myproc = runnables[i];
+      acquire(&myproc->lock);
       myproc->schedvruntime = myproc->vruntime;
       myproc->quanta = sched_latency / runnable; 
       myproc->state = RUNNING;
+      c->proc = myproc;
+      printf("Scheduling pid %d, name %s, runnables %d\n", myproc->pid, myproc->name, runnable);
       swtch(&c->scheduler, &myproc->context);
 
       // Process is done running for now.
       // It should have changed its p->state before coming back.
       c->proc = 0;
+      release(&myproc->lock);
+    }
+
+    if(!runnable){
+      intr_on();
+      asm volatile("wfi");
     }
 
     // Sorting argh
@@ -495,9 +503,8 @@ scheduler(void)
 
   // ensure that release() doesn't enable interrupts.
   // again to avoid a race between interrupt and WFI.
-  c->intena = 0;
 
-  release(&p->lock);
+  
 }
 }
 
@@ -700,7 +707,7 @@ procdump(void)
       state = states[p->state];
     else
       state = "???";
-    printf("%d %s %s %d", p->pid, state, p->name, p->vruntime);
+    printf("%d %s %s %d %d %d", p->pid, state, p->name, p->vruntime, p->schedvruntime, p->quanta);
     printf("\n");
   }
 }

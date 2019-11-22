@@ -79,7 +79,8 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2 && p->schedvruntime - p->vruntime >= p->quanta){
+  if(which_dev == 2 && p->vruntime - p->schedvruntime >= p->quanta){
+    printf("Force yield from process %d\n", p->pid);
     yield();
   }
 
@@ -152,8 +153,17 @@ kerneltrap()
   }
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
-    yield();
+  if(which_dev == 2){
+    struct proc *p;
+    if((p = myproc())){
+        printf("p: %d\n", p->pid);
+        procdump();
+        if(p->state == RUNNING && p->vruntime - p->schedvruntime >= p->quanta){
+            printf("Kernel trap give up\n");
+            yield();
+    }
+  }
+  }
 
   // the yield() may have caused some traps to occur,
   // so restore trap registers for use by kernelvec.S's sepc instruction.
@@ -206,7 +216,6 @@ devintr()
 
     struct proc *p;
     if((p = myproc())){
-      printf("\nIncrementing pid %d: %s, cur t %d\n",p->pid, p->name, p->vruntime);
       p->vruntime++;
     }
     if(cpuid() == 0){
