@@ -501,10 +501,6 @@ scheduler(void)
     //}
     //}
 
-  // ensure that release() doesn't enable interrupts.
-  // again to avoid a race between interrupt and WFI.
-
-  
 }
 }
 
