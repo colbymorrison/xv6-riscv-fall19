@@ -34,10 +34,9 @@ trapinithart(void)
 
 void
 timerintrtrap(struct proc *p){
-   printf("Timer intr for proc %d\n", p->pid);
-   procdump();
+   // printf("Timer intr for proc %d\n", p->pid);
    if(p->state == RUNNING && p->vruntime - p->schedvruntime >= p->quanta){
-     printf("Exceeded quota, yielding!\n");
+     // printf("Exceeded quota, yielding!\n");
      yield();
    }
 }

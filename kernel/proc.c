@@ -435,6 +435,9 @@ wait(uint64 addr)
   }
 }
 
+//TODO seperate sort film
+void sortProc(struct proc* arr[], int low, int high); 
+
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
 // Scheduler never returns.  It loops, doing:
@@ -471,14 +474,48 @@ scheduler(void)
       release(&p->lock);
     }
 
+    int quanta = sched_latency / runnable;
+    struct proc *myproc = 0;
+
+    int myticks;
+    if(DEBUG == 1){
+        acquire(&tickslock);
+        myticks = ticks;
+        release(&tickslock);
+    }
+    
+    if(runnable >= 2){
+      printf("SORTING\n");
+      sortProc(runnables, 0, runnable-1);
+    }
+
     for(int i = 0; i < runnable; i++){
-      struct proc *myproc = runnables[i];
+      if(DEBUG == 1 && myproc){
+        printf("acquire\n");
+        acquire(&tickslock);
+        printf("Previous proc ran for %d ticks\n", ticks - myticks); 
+        myticks = ticks;
+        release(&tickslock);
+      }
+
+      myproc = runnables[i];
       acquire(&myproc->lock);
       myproc->schedvruntime = myproc->vruntime;
-      myproc->quanta = sched_latency / runnable; 
+      myproc->quanta = quanta;
       myproc->state = RUNNING;
       c->proc = myproc;
-      printf("Scheduling pid %d, name %s, runnables %d\n", myproc->pid, myproc->name, runnable);
+
+      if(DEBUG == 2){
+        acquire(&tickslock);
+        printf("%d, %d\n", myproc->pid, ticks);
+        release(&tickslock);
+      }
+
+      if(DEBUG == 1){
+         printf("Scheduling pid %d, name %s, with quanta %d\n", myproc->pid, myproc->name, quanta);
+        procdump();
+      }
+
       swtch(&c->scheduler, &myproc->context);
 
       // Process is done running for now.
@@ -491,16 +528,6 @@ scheduler(void)
       intr_on();
       asm volatile("wfi");
     }
-
-    // Sorting argh
-    //int runtimemin = INT_MAX;
-    //for(int i = 0; i < runnable; i++){
-    // struct proc *thisproc = runnables[i];
-    //if(thisproc -> vruntime < runtimemin){
-    // runtimemin = thisproc -> vruntime;
-    //}
-    //}
-
 }
 }
 
@@ -703,7 +730,48 @@ procdump(void)
       state = states[p->state];
     else
       state = "???";
-    printf("%d %s %s %d %d %d", p->pid, state, p->name, p->vruntime, p->schedvruntime, p->quanta);
-    printf("\n");
+    printf("%d %s %s %d %d %d\n", p->pid, state, p->name, p->vruntime, p->schedvruntime, p->quanta);
   }
+  printf("\n");
 }
+
+
+void swap(struct proc *arr[], int low, int high){
+  struct proc *hold  = arr[low];
+  arr[low] = arr[high];
+  arr[high] = hold;
+}
+
+int partition (struct proc* arr[], int low, int high) 
+{ 
+  int pivot= arr[high]->vruntime;    // pivot 
+  int i = (low - 1);  // Index of smaller element 
+
+  for (int j = low; j <= high- 1; j++) 
+  { 
+    // If current element is smaller than the pivot 
+    if (arr[j]->vruntime < pivot) 
+    { 
+      i++;    // increment index of smaller element 
+      swap(arr, i, j); 
+    } 
+  } 
+  swap(arr, i + 1, high); 
+  return (i + 1); 
+} 
+
+void sortProc(struct proc* arr[], int low, int high) 
+{ 
+  if (low < high) 
+  { 
+    /* pi is partitioning index, arr[p] is now 
+     *            at right place */
+    int pi = partition(arr, low, high); 
+
+    // Separately sort elements before 
+    //         // partition and after partition 
+    sortProc(arr, low, pi - 1); 
+    sortProc(arr, pi + 1, high); 
+  } 
+} 
+

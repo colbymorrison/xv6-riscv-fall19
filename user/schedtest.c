@@ -12,17 +12,19 @@ int main(int argc, char **argv){
     }
 
     if(!pid){
-      // Spin for 10 ticks
+      // Spin for 100 ticks
       int time = uptime();
-      while(uptime() < time + 10);
+      while(uptime() < time + 100);
+      printf("Done! %d \n", getpid());
+      exit(0);
     }
+  
 
     pid = fork();
     if(pid == -1){
       printf("Fork error! For rd\n");
       continue;
     }
-
 
     if(!pid){
       for(int i = 0; i < 1000; i++){
@@ -40,6 +42,7 @@ int main(int argc, char **argv){
         }
         close(fd);
       }
+      exit(0);
     }
   }
   exit(0);
