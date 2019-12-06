@@ -4,7 +4,7 @@
 
 int main(int argc, char **argv){
   // Fork some CPU & IO bound processes 
-  for(int i = 0; i < 3; i++){
+  for(int i = 0; i < 5; i++){
     int pid = fork();
     if(pid ==  -1){
       printf("Fork error!\n");

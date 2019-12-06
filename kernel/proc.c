@@ -450,6 +450,7 @@ scheduler(void)
   struct proc *p;
   struct cpu *c = mycpu();
   int sched_latency = 40;
+  int min_quanta = 5; 
   
   c->proc = 0;
   for(;;){
@@ -474,6 +475,11 @@ scheduler(void)
     }
 
     int quanta = sched_latency / runnable;
+
+    if(quanta < min_quanta){
+      quanta = min_quanta;
+    }
+
     struct proc *myproc = 0;
 
     int myticks;
@@ -483,10 +489,9 @@ scheduler(void)
         release(&tickslock);
     }
     
-    if(runnable >= 2){
-      printf("SORTING\n");
-      sortProc(runnables, 0, runnable-1);
-    }
+    //if(runnable >= 2){
+     //sortProc(runnables, 0, runnable-1);
+    //}
 
     for(int i = 0; i < runnable; i++){
       if(DEBUG == 1 && myproc){
